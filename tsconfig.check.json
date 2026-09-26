@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "target": "es2020",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "noResolve": false,
+    "strict": false,
+    "types": []
+  },
+  "include": ["src/**/*.js", "src/**/*.jsx"]
+}

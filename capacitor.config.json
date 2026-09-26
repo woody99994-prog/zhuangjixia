@@ -1,0 +1,8 @@
+{
+  "appId": "com.zhuangjixia.app",
+  "appName": "装机匣",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

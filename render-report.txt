@@ -1,0 +1,17 @@
+OK Home 渲染成功 (4254 字节)
+OK Square 渲染成功 (557 字节)
+OK AIBuild 渲染成功 (1725 字节)
+OK MyConfigs 渲染成功 (495 字节)
+OK Profile 渲染成功 (7899 字节)
+OK Messages 渲染成功 (545 字节)
+OK Favorites 渲染成功 (476 字节)
+OK MyPosts 渲染成功 (476 字节)
+OK BrowseHistory 渲染成功 (495 字节)
+OK AccountSecurity 渲染成功 (2751 字节)
+OK EditProfile 渲染成功 (409 字节)
+OK AboutSheet 渲染成功 (0 字节)
+OK LegalDoc 渲染成功 (594 字节)
+OK Login 渲染成功 (2943 字节)
+OK Search 渲染成功 (1126 字节)
+
+RENDER PASS=15 FAIL=0

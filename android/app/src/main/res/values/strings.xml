@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">装机匣</string>
+    <string name="title_activity_main">装机匣</string>
+    <string name="package_name">com.zhuangjixia.app</string>
+    <string name="custom_url_scheme">com.zhuangjixia.app</string>
+</resources>

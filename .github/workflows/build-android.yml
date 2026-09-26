@@ -1,0 +1,54 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle (inject API base)
+        run: npm run build
+        env:
+          # 在仓库 Settings → Secrets and variables → Variables 中设置 VITE_API_BASE，
+          # 指向真机 / 真机可达的后端，例如 https://api.yourdomain.com/api/app
+          VITE_API_BASE: ${{ vars.VITE_API_BASE || 'https://REPLACE-ME.example.com/api/app' }}
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Ensure Android platform present
+        run: yes | ${{ env.ANDROID_HOME }}/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+
+      - name: Build debug APK
+        run: cd android && chmod +x ./gradlew && ./gradlew assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
