@@ -15,26 +15,46 @@ const TYPE_LABEL = {
 export default function Messages({ onBack }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [unread, setUnread] = useState(0)
 
-  const load = useCallback(() => {
+  const load = useCallback((pg = 1, append = false) => {
     let alive = true
-    setLoading(true)
-    Promise.all([
-      api.get('my/messages?pageSize=50'),
-      api.get('my/messages/unread-count'),
-    ])
-      .then(([d, u]) => {
+    if (pg === 1) setLoading(true)
+    else setLoadingMore(true)
+    const reqs = [api.get('my/messages?page=' + pg + '&pageSize=20')]
+    if (pg === 1) reqs.push(api.get('my/messages/unread-count'))
+    Promise.all(reqs)
+      .then((res) => {
         if (!alive) return
-        setItems((d && d.items) || [])
-        setUnread((u && u.unread) || 0)
+        const d = res[0]
+        const list = (d && d.items) || []
+        const t = d && typeof d.total === 'number' ? d.total : list.length
+        setItems(append ? (prev) => [...prev, ...list] : list)
+        setTotal(t)
+        setPage(pg)
+        if (pg === 1) setUnread((res[1] && res[1].unread) || 0)
       })
-      .catch(() => alive && setItems([]))
-      .finally(() => alive && setLoading(false))
+      .catch(() => {
+        if (!alive) return
+        if (!append) setItems([])
+      })
+      .finally(() => {
+        if (!alive) return
+        if (pg === 1) setLoading(false)
+        else setLoadingMore(false)
+      })
     return () => {
       alive = false
     }
   }, [])
+
+  const loadMore = () => {
+    if (loadingMore) return
+    load(page + 1, true)
+  }
 
   useEffect(() => {
     const cancel = load()
@@ -94,7 +114,8 @@ export default function Messages({ onBack }) {
         ) : items.length === 0 ? (
           <div className="sp-empty">暂无消息</div>
         ) : (
-          items.map((m) => (
+          <>
+            {items.map((m) => (
             <div
               className={'msg-item' + (m.isRead ? '' : ' is-unread')}
               key={m.id}
@@ -127,7 +148,13 @@ export default function Messages({ onBack }) {
                 </div>
               </div>
             </div>
-          ))
+            ))}
+            {items.length < total && (
+              <button className="sr-more" type="button" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? '加载中…' : '加载更多'}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { IconPlus, IconClose, IconImage, IconMonitor, IconTag, IconChevron } from '../components/Icons.jsx'
+import { IconPlus, IconClose, IconImage, IconMonitor, IconTag, IconChevron, IconGrid, IconList, IconHeart, IconGift } from '../components/Icons.jsx'
 import { api } from '../apiClient.js'
 import { uploadImage, compressImage } from '../media.js'
 import { planToMarkdownTable } from '../configTable.js'
 import { relTime } from '../format.js'
+import LotteryPicker from '../components/LotteryPicker.jsx'
+// 注：积分抽奖不再插入广场列表流，改为内嵌在帖子详情页（见 ArticleDetail 的 PostLottery）
 
 // 三个列表页共享同一套 .post 卡片样式，保证风格统一
 const TABS = [
@@ -14,14 +16,32 @@ const TABS = [
 ]
 
 // 04 广场（含 最新 / 热门 / 精选 三个可切换列表页 + 标签筛选 + 发帖弹层）
-export default function Square({ onOpenArticle }) {
+export default function Square({ onOpenArticle, onOpenUser, isFav, toggleFav }) {
   const [tab, setTab] = useState('latest')
+  // 显示模式：list 单列表列 / grid 四宫格瀑布；持久化到 localStorage，刷新不回退
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const saved = localStorage.getItem('zjx_sq_view')
+        if (saved === 'grid' || saved === 'list') return saved
+      }
+    } catch (e) {}
+    return 'list'
+  })
+  useEffect(() => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('zjx_sq_view', viewMode)
+    } catch (e) {}
+  }, [viewMode])
   const [tag, setTag] = useState('')
   const [tags, setTags] = useState([])
   // 标签默认收起，只显示一个「展开」按钮；点击后才铺开全部标签
   const [tagPanel, setTagPanel] = useState(false)
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [compose, setCompose] = useState(false)
   const [form, setForm] = useState({ title: '', content: '', tags: '', cover: '', file: null })
   const [saving, setSaving] = useState(false)
@@ -30,21 +50,48 @@ export default function Square({ onOpenArticle }) {
   // 发帖时插入配置表：从「我的配置」里挑一套
   const [pickCfg, setPickCfg] = useState(false)
   const [myCfgs, setMyCfgs] = useState([])
+  // 发帖时插入抽奖：只有作者主动插入，帖子详情页才会出现抽奖模块
+  // 弹层与后台「新建抽奖活动」同构，可现场新建（含奖品池）或选择已有未挂载活动
+  const [lotPicker, setLotPicker] = useState(false)
+  const [pickedLottery, setPickedLottery] = useState(null)
   const fileRef = useRef(null)
 
-  const loadPosts = useCallback(() => {
-    let alive = true
-    setLoading(true)
-    const qs = `tab=${tab}&pageSize=20${tag ? '&tag=' + encodeURIComponent(tag) : ''}`
-    api
-      .get('posts?' + qs, { auth: false })
-      .then((d) => alive && setPosts(d && d.items ? d.items : []))
-      .catch(() => alive && setPosts([]))
-      .finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
-    }
-  }, [tab, tag])
+  const loadPosts = useCallback(
+    (pg = 1, append = false) => {
+      let alive = true
+      if (pg === 1) setLoading(true)
+      else setLoadingMore(true)
+      const qs = `tab=${tab}&page=${pg}&pageSize=20${tag ? '&tag=' + encodeURIComponent(tag) : ''}`
+      api
+        .get('posts?' + qs, { auth: false })
+        .then((d) => {
+          if (!alive) return
+          const list = d && d.items ? d.items : []
+          const t = d && typeof d.total === 'number' ? d.total : list.length
+          setPosts(append ? (prev) => [...prev, ...list] : list)
+          setTotal(t)
+          setPage(pg)
+        })
+        .catch(() => {
+          if (!alive) return
+          if (!append) setPosts([])
+        })
+        .finally(() => {
+          if (!alive) return
+          if (pg === 1) setLoading(false)
+          else setLoadingMore(false)
+        })
+      return () => {
+        alive = false
+      }
+    },
+    [tab, tag],
+  )
+
+  const loadMore = () => {
+    if (loadingMore) return
+    loadPosts(page + 1, true)
+  }
 
   useEffect(() => {
     const cancel = loadPosts()
@@ -71,6 +118,7 @@ export default function Square({ onOpenArticle }) {
     if (saving) return
     setCompose(false)
     setPickCfg(false)
+    setLotPicker(false)
   }
 
   // 真实图片选择：本地预览用压缩后的 dataURL，落库前才上传换 URL
@@ -105,6 +153,12 @@ export default function Square({ onOpenArticle }) {
     setPickCfg(false)
   }
 
+  // 插入抽奖：弹层里新建或直接选已有，选中后随帖子一起提交绑定
+  const insertLottery = (l) => {
+    setPickedLottery(l)
+    setLotPicker(false)
+  }
+
   const submit = async () => {
     const title = form.title.trim()
     if (!title || saving) return
@@ -121,11 +175,15 @@ export default function Square({ onOpenArticle }) {
         title,
         contentMd: form.content,
         coverUrl,
-        tags: tagList
+        tags: tagList,
+        // 插入的抽奖活动：后端把它挂载到这篇新帖（未挂载过的才允许插入）
+        ...(pickedLottery && pickedLottery.id ? { lotteryId: String(pickedLottery.id) } : {})
       })
       setForm({ title: '', content: '', tags: '', cover: '', file: null })
+      setPickedLottery(null)
       setCompose(false)
       setPickCfg(false)
+      setLotPicker(false)
       setTab('latest')
       setTag('')
       // 用户拍板「发布后立即可见」：发完必须能在最新流里刷到自己这条
@@ -140,6 +198,19 @@ export default function Square({ onOpenArticle }) {
   }
 
   const deviceEl = typeof document !== 'undefined' ? document.querySelector('.device') : null
+
+  // 帖子收藏切换（写库 + 乐观更新共享收藏态）
+  const onFav = (e, p) => {
+    e.stopPropagation()
+    if (!toggleFav) return
+    const had = isFav ? isFav('post', p.id) : false
+    toggleFav('post', p.id, {
+      title: p.title,
+      coverUrl: p.coverUrl || p.cover || null,
+      summary: p.summary || null,
+    }).catch(() => {})
+    return had
+  }
 
   return (
     <div className="square">
@@ -163,6 +234,19 @@ export default function Square({ onOpenArticle }) {
             {t.label}
           </button>
         ))}
+        <button
+          type="button"
+          className="sq-view-toggle"
+          aria-label={viewMode === 'list' ? '切换为四宫格' : '切换为列表'}
+          title={viewMode === 'list' ? '四宫格' : '列表'}
+          onClick={() => setViewMode((v) => (v === 'list' ? 'grid' : 'list'))}
+        >
+          {viewMode === 'list' ? (
+            <IconGrid size={20} color="var(--muted)" strokeWidth={1.9} />
+          ) : (
+            <IconList size={20} color="var(--brand)" strokeWidth={1.9} />
+          )}
+        </button>
       </div>
 
       {tags.length > 0 && (
@@ -226,59 +310,143 @@ export default function Square({ onOpenArticle }) {
         </div>
       )}
 
-      <div className="feed">
-        {loading ? (
-          <div className="feed-empty">加载中…</div>
-        ) : posts.length === 0 ? (
-          <div className="feed-empty">暂无内容</div>
-        ) : (
-          posts.map((p, i) => (
-            <article
-              className="post"
-              key={p.id != null ? String(p.id) : i}
-              onClick={() => onOpenArticle && onOpenArticle({ kind: 'post', id: String(p.id), ...p })}
-            >
-              <div className="post-head">
-                <span className="post-av" />
-                <div>
-                  <div className="post-name">{p.name || '装机匣玩家'}</div>
-                  <div className="post-time">{relTime(p.publishedAt) || p.time || ''}</div>
-                </div>
-              </div>
+      {loading ? (
+        <div className="feed-empty">加载中…</div>
+      ) : posts.length === 0 ? (
+        <div className="feed-empty">暂无内容</div>
+      ) : viewMode === 'grid' ? (
+        <>
+          <div className="feed-grid">
+            {posts.map((p, i) => {
+              const fav = isFav ? isFav('post', p.id) : false
+              return (
+                <article
+                  className="grid-card"
+                  key={p.id != null ? String(p.id) : i}
+                  onClick={() => onOpenArticle && onOpenArticle({ kind: 'post', id: String(p.id), ...p })}
+                >
+                  <div className={'grid-thumb' + (p.coverUrl || p.cover ? ' has-img' : '')}>
+                    {p.coverUrl || p.cover ? (
+                      <img src={p.coverUrl || p.cover} alt="" />
+                    ) : (
+                      <span className="grid-thumb-ph">装机匣</span>
+                    )}
+                  </div>
+                  <div className="grid-body">
+                    <h3 className="grid-title">{p.title}</h3>
+                    <div className="grid-foot">
+                      <span className="grid-like">{p.likeCount || 0} 赞</span>
+                      <button
+                        type="button"
+                        className={'grid-fav' + (fav ? ' on' : '')}
+                        aria-label={fav ? '取消收藏' : '收藏'}
+                        onClick={(e) => onFav(e, p)}
+                      >
+                        <IconHeart
+                          size={18}
+                          color={fav ? '#FF4D4F' : '#ADB5BF'}
+                          fill={fav ? '#FF4D4F' : 'none'}
+                          strokeWidth={1.9}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+          {posts.length < total && (
+            <button className="sr-more" type="button" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? '加载中…' : '加载更多'}
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="feed">
+            {posts.map((p, i) => {
+              const fav = isFav ? isFav('post', p.id) : false
+              return (
+                <article
+                  className="post"
+                  key={p.id != null ? String(p.id) : i}
+                  onClick={() => onOpenArticle && onOpenArticle({ kind: 'post', id: String(p.id), ...p })}
+                >
+                  <div
+                    className="post-head"
+                    onClick={(e) => {
+                      if (p.authorId && onOpenUser) {
+                        e.stopPropagation()
+                        onOpenUser(p.authorId)
+                      }
+                    }}
+                  >
+                    {p.author && p.author.avatarUrl ? (
+                      <img className="post-av" src={p.author.avatarUrl} alt="" />
+                    ) : (
+                      <span className="post-av" />
+                    )}
+                    <div>
+                      <div className="post-name">{p.author ? p.author.nickname : p.name || '装机匣玩家'}</div>
+                      <div className="post-time">{relTime(p.publishedAt) || p.time || ''}</div>
+                    </div>
+                  </div>
 
-              <h3 className="post-title">{p.title}</h3>
+                  <h3 className="post-title">{p.title}</h3>
 
-              <div className={'post-thumb' + (p.coverUrl || p.cover ? ' has-img' : '')}>
-                {p.coverUrl || p.cover ? (
-                  <img src={p.coverUrl || p.cover} alt="" />
-                ) : p.thumbText || p.summary ? (
-                  <span>{p.thumbText || p.summary}</span>
-                ) : null}
-              </div>
+                  <div className={'post-thumb' + (p.coverUrl || p.cover ? ' has-img' : '')}>
+                    {p.coverUrl || p.cover ? (
+                      <img src={p.coverUrl || p.cover} alt="" />
+                    ) : p.thumbText || p.summary ? (
+                      <span>{p.thumbText || p.summary}</span>
+                    ) : null}
+                  </div>
 
-              <div className="post-tags">
-                {(p.tags || []).map((t, ti) =>
-                  typeof t === 'string' ? (
-                    <span className="chip-soft" key={ti}>
-                      {t}
+                  <div className="post-tags">
+                    {(p.tags || []).map((t, ti) =>
+                      typeof t === 'string' ? (
+                        <span className="chip-soft" key={ti}>
+                          {t}
+                        </span>
+                      ) : (
+                        <span className="chip-soft" key={ti}>
+                          {t.tag ? t.tag.name : t.name}
+                        </span>
+                      ),
+                    )}
+                  </div>
+
+                  <div className="post-foot">
+                    <span className="post-meta">
+                      {typeof p.meta === 'string'
+                        ? p.meta
+                        : `${p.likeCount || 0} 赞 · ${p.viewCount || 0} 浏览`}
                     </span>
-                  ) : (
-                    <span className="chip-soft" key={ti}>
-                      {t.tag ? t.tag.name : t.name}
-                    </span>
-                  ),
-                )}
-              </div>
-
-              <div className="post-foot">
-                {typeof p.meta === 'string'
-                  ? p.meta
-                  : `${p.likeCount || 0} 赞 · ${p.viewCount || 0} 浏览`}
-              </div>
-            </article>
-          ))
-        )}
-      </div>
+                    <button
+                      type="button"
+                      className={'post-fav' + (fav ? ' on' : '')}
+                      aria-label={fav ? '取消收藏' : '收藏'}
+                      onClick={(e) => onFav(e, p)}
+                    >
+                      <IconHeart
+                        size={18}
+                        color={fav ? '#FF4D4F' : '#ADB5BF'}
+                        fill={fav ? '#FF4D4F' : 'none'}
+                        strokeWidth={1.9}
+                      />
+                    </button>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+          {posts.length < total && (
+            <button className="sr-more" type="button" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? '加载中…' : '加载更多'}
+            </button>
+          )}
+        </>
+      )}
 
       {compose &&
         deviceEl &&
@@ -316,13 +484,31 @@ export default function Square({ onOpenArticle }) {
                 disabled={saving}
               />
 
-              <div className="modal-row">
+              {/* 插入入口同行显示：配置 / 抽奖，点开各自的弹层 */}
+              <div className="modal-row modal-row-insert">
                 <button type="button" className="modal-mini" onClick={openPicker} disabled={saving}>
                   <IconMonitor size={15} color="currentColor" strokeWidth={1.9} />
-                  <span>插入配置表</span>
+                  <span>配置</span>
                 </button>
-                <span className="modal-hint">从「我的配置」里挑一套，会以表格形式插进正文</span>
+                <button type="button" className="modal-mini" onClick={() => setLotPicker(true)} disabled={saving}>
+                  <IconGift size={15} color="currentColor" strokeWidth={1.9} />
+                  <span>抽奖</span>
+                </button>
+                <span className="modal-hint">插入后本贴详情才会显示对应模块，不插入则不显示</span>
               </div>
+              {pickedLottery ? (
+                <div className="modal-picked">
+                  <span className="modal-picked-name">已插入抽奖：{pickedLottery.title}</span>
+                  <button
+                    type="button"
+                    className="modal-picked-del"
+                    onClick={() => setPickedLottery(null)}
+                    disabled={saving}
+                  >
+                    移除
+                  </button>
+                </div>
+              ) : null}
 
               {pickCfg && (
                 <div className="modal-picker">
@@ -396,6 +582,9 @@ export default function Square({ onOpenArticle }) {
           </div>,
           deviceEl,
         )}
+
+      {/* 插入抽奖弹层：与后台「新建抽奖活动」同构，可现场新建或选择已有 */}
+      <LotteryPicker open={lotPicker} onClose={() => setLotPicker(false)} onPick={insertLottery} />
     </div>
   )
 }

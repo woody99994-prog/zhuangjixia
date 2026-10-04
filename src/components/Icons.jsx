@@ -503,6 +503,46 @@ export function IconStar({ size = 24, color = 'currentColor', strokeWidth = 2, f
   )
 }
 
+export function IconCoin({ size = 24, color = 'currentColor', strokeWidth = 2 }) {
+  return wrap(
+    size,
+    <>
+      <circle cx="12" cy="12" r="8" stroke={color} strokeWidth={strokeWidth} />
+      <path d="M9 10l3-3 3 3" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 7v8" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+      <path d="M9.5 13h5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </>,
+  )
+}
+
+// 礼物盒：积分抽奖卡片与中奖结果使用
+export function IconGift({ size = 24, color = 'currentColor', strokeWidth = 2 }) {
+  return wrap(
+    size,
+    <>
+      <path d="M4 10h16v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V10Z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <path d="M3 7h18v3H3z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <path d="M12 7v14" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+      <path d="M12 7S10.5 3 8 3a2.2 2.2 0 0 0 0 4" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 7s1.5-4 4-4a2.2 2.2 0 0 1 0 4" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    </>,
+  )
+}
+
+// 货车：收货地址 / 物流相关入口
+export function IconTruck({ size = 24, color = 'currentColor', strokeWidth = 2 }) {
+  return wrap(
+    size,
+    <>
+      <path d="M3 7h10v9H3z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <path d="M13 10h4l3 3v3h-7z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <circle cx="7" cy="18" r="1.6" stroke={color} strokeWidth={strokeWidth} />
+      <circle cx="17" cy="18" r="1.6" stroke={color} strokeWidth={strokeWidth} />
+      <path d="M3 16h2M8.6 18h6.8" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </>,
+  )
+}
+
 export function IconComment({ size = 24, color = 'currentColor', strokeWidth = 2, fill = 'none' }) {
   return wrap(
     size,
@@ -567,6 +607,30 @@ export function IconTrash({ size = 24, color = 'currentColor', strokeWidth = 2 }
         strokeLinejoin="round"
       />
       <path d="M10.5 11v5M13.5 11v5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </>,
+  )
+}
+
+// 显示模式切换：四宫格（瀑布）视图
+export function IconGrid({ size = 24, color = 'currentColor', strokeWidth = 2 }) {
+  return wrap(
+    size,
+    <>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.8" stroke={color} strokeWidth={strokeWidth} />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.8" stroke={color} strokeWidth={strokeWidth} />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.8" stroke={color} strokeWidth={strokeWidth} />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.8" stroke={color} strokeWidth={strokeWidth} />
+    </>,
+  )
+}
+
+// 显示模式切换：单列（表列）视图
+export function IconList({ size = 24, color = 'currentColor', strokeWidth = 2 }) {
+  return wrap(
+    size,
+    <>
+      <path d="M8 6h12M8 12h12M8 18h12" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+      <path d="M4 6h.01M4 12h.01M4 18h.01" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
     </>,
   )
 }

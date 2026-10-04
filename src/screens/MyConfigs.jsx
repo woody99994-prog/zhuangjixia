@@ -12,12 +12,37 @@ import {
 import { CONFIG_SLOTS } from '../data.js'
 import { api } from '../apiClient.js'
 import { yuan } from '../format.js'
-import { planTotalYuan } from '../configTable.js'
+import { planTotalYuan, normalizePlan } from '../configTable.js'
+import PriceTrendChart, { PRICE_SOURCES } from '../components/PriceTrendChart.jsx'
+import ConfigDetailView, { planPreview } from '../components/ConfigDetailView.jsx'
 
 // 列表卡片只露前 3 件配件，其余折叠成「+N 项」：
 // 11 个槽位全铺开会把卡片撑得很高，完整清单点进卡片看详情
 const PREVIEW_SLOTS = 3
 const MODEL_MAX = 12
+
+// 价格走势时间窗（与后端 RANGE_DAYS 对齐）
+const RANGES = [
+  { k: '1d', label: '1天' },
+  { k: '7d', label: '7天' },
+  { k: '1m', label: '1月' },
+  { k: '6m', label: '半年' },
+  { k: '1y', label: '1年' },
+]
+const RANGE_LABEL = { '1d': '1天', '7d': '7天', '1m': '1月', '6m': '半年', '1y': '1年' }
+
+// 取某来源最新价（分）；优先 official，无则回退任一来源
+const trendCurrent = (data, key) => {
+  const arr = (data && data.sources && data.sources[key]) || []
+  return arr.length ? arr[arr.length - 1].priceCents : null
+}
+// 区间涨跌百分比：用首个有数据的来源（official>jd>taobao）的首末点计算
+const trendChangePct = (data) => {
+  const primary =
+    (data && data.sources && (data.sources.official || data.sources.jd || data.sources.taobao)) || []
+  if (primary.length < 2 || !primary[0].priceCents) return null
+  return ((primary[primary.length - 1].priceCents - primary[0].priceCents) / primary[0].priceCents) * 100
+}
 
 const shortModel = (m) => {
   const t = String(m || '')
@@ -34,6 +59,9 @@ const emptyPlan = () =>
 export default function MyConfigs({ onLogout }) {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [cfgTotal, setCfgTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [err, setErr] = useState('')
   const [flash, setFlash] = useState('')
   // 编辑器：null=列表；{ id?, title, plan }=编辑中（id 为空即新建）
@@ -49,22 +77,44 @@ export default function MyConfigs({ onLogout }) {
   const [hwList, setHwList] = useState([])
   const [hwLoading, setHwLoading] = useState(false)
 
-  const load = useCallback(() => {
+  // 价格走势弹层：{ hardware, range, data, loading, err } | null
+  const [trend, setTrend] = useState(null)
+
+  const load = useCallback((pg = 1, append = false) => {
     let alive = true
-    setLoading(true)
+    if (pg === 1) setLoading(true)
+    else setLoadingMore(true)
     api
-      .get('my/configs?pageSize=50')
-      .then((d) => alive && setList(d && d.items ? d.items : []))
+      .get('my/configs?page=' + pg + '&pageSize=20')
+      .then((d) => {
+        if (!alive) return
+        const items = d && d.items ? d.items : []
+        const t = d && typeof d.total === 'number' ? d.total : items.length
+        setList(append ? (prev) => [...prev, ...items] : items)
+        setCfgTotal(t)
+        setPage(pg)
+      })
       .catch((e) => {
         if (!alive) return
-        if (e.code === 'UNAUTHORIZED' && onLogout) onLogout()
-        else setErr(e.message || '加载失败')
+        if (pg === 1) {
+          if (e.code === 'UNAUTHORIZED' && onLogout) onLogout()
+          else setErr(e.message || '加载失败')
+        }
       })
-      .finally(() => alive && setLoading(false))
+      .finally(() => {
+        if (!alive) return
+        if (pg === 1) setLoading(false)
+        else setLoadingMore(false)
+      })
     return () => {
       alive = false
     }
   }, [onLogout])
+
+  const loadMore = () => {
+    if (loadingMore) return
+    load(page + 1, true)
+  }
 
   useEffect(() => {
     const cancel = load()
@@ -80,10 +130,9 @@ export default function MyConfigs({ onLogout }) {
 
   const openEdit = (c) => {
     const plan = emptyPlan()
-    const src = c.planJson || {}
-    for (const s of CONFIG_SLOTS) {
-      const it = src[s.key] || {}
-      if (it) plan[s.key] = { model: it.model || '', price: Number(it.price) || 0 }
+    // 清单格式（parts[]）的配置也要能编辑：先归一化，再回填到 11 个槽位
+    for (const r of normalizePlan(c.planJson || {}).rows) {
+      if (plan[r.slot]) plan[r.slot] = { model: r.model, price: Number(r.price) || 0 }
     }
     setEditing({ id: c.id, title: c.title || '', plan })
   }
@@ -155,6 +204,26 @@ export default function MyConfigs({ onLogout }) {
     setPicker(null)
   }
 
+  // —— 价格走势弹层 ——（公开接口，无需登录）
+  const loadTrend = (hardware, range, keepData) => {
+    setTrend((prev) => ({
+      hardware,
+      range,
+      data: keepData && prev ? prev.data : null,
+      loading: true,
+      err: '',
+    }))
+    api
+      .get('hardware/' + hardware.id + '/price-history?range=' + range, { auth: false })
+      .then((d) => setTrend({ hardware, range, data: d, loading: false, err: '' }))
+      .catch((e) => setTrend({ hardware, range, data: null, loading: false, err: (e && e.message) || '加载失败' }))
+  }
+  const openTrend = (h) => loadTrend(h, '1y', false)
+  const changeTrendRange = (r) => {
+    if (trend) loadTrend(trend.hardware, r, true)
+  }
+  const closeTrend = () => setTrend(null)
+
   // 搜索 + 排序（热门=评分降序 / 最新=创建时间降序 / 性价比=评分÷价格）
   const displayedHw = useMemo(() => {
     const q = hwQuery.trim().toLowerCase()
@@ -169,7 +238,9 @@ export default function MyConfigs({ onLogout }) {
   }, [hwList, hwQuery, hwTab])
 
   // —— 详情页 ——
-  if (detail) {
+  // editing 时让位给编辑器：详情分支写在编辑器之前，不加这个判断会出现
+  // 「点了编辑没反应，要再关一次详情才进编辑器」（detail 一直为真，抢先 return）
+  if (detail && !editing) {
     return (
       <div className="configs">
         <div className="mc-head">
@@ -195,28 +266,7 @@ export default function MyConfigs({ onLogout }) {
           </div>
         </div>
 
-        <div className="cfg-detail">
-          <div className="cfg-detail-title">{detail.title}</div>
-          <div className="cfg-detail-total">
-            <span>配置总价</span>
-            <b>{yuan(detail.totalPriceCents)}</b>
-          </div>
-          <div className="cfg-detail-rows">
-            {CONFIG_SLOTS.map((s) => {
-              const it = (detail.planJson || {})[s.key] || {}
-              return (
-                <div className="cfg-detail-row" key={s.key}>
-                  <span className="cfg-dr-ic">
-                    <SlotIcon slot={s.key} size={18} />
-                  </span>
-                  <span className="cfg-dr-name">{s.cn}</span>
-                  <span className="cfg-dr-model">{it.model || '未选择'}</span>
-                  <span className="cfg-dr-price">{it.price ? '¥' + Number(it.price) : '—'}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <ConfigDetailView detail={detail} />
       </div>
     )
   }
@@ -351,7 +401,7 @@ export default function MyConfigs({ onLogout }) {
                           title="价格走势"
                           onClick={(e) => {
                             e.stopPropagation()
-                            toast('价格走势图开发中')
+                            openTrend(h)
                           }}
                         >
                           <IconTrend size={15} color="var(--muted)" strokeWidth={2} />
@@ -361,6 +411,96 @@ export default function MyConfigs({ onLogout }) {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 价格走势弹层（公开接口，无需登录） */}
+        {trend && (
+          <div className="hw-mask trend-mask" onClick={closeTrend}>
+            <div className="hw-modal trend-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="hw-head">
+                <div className="hw-title">
+                  <IconTrend size={18} color="var(--brand)" strokeWidth={2} />
+                  <span>价格走势</span>
+                </div>
+                <button className="hw-close" type="button" onClick={closeTrend}>
+                  <IconClose size={18} color="var(--ink)" strokeWidth={2.2} />
+                </button>
+              </div>
+
+              <div className="trend-meta">
+                <span className="trend-hw-name">{trend.hardware.model}</span>
+                <span className="trend-hw-brand">
+                  {trend.hardware.brand || '通用'} · 评分 {trend.hardware.score}
+                </span>
+              </div>
+
+              <div className="trend-ranges">
+                {RANGES.map((r) => (
+                  <button
+                    key={r.k}
+                    className={'trend-chip' + (trend.range === r.k ? ' on' : '')}
+                    type="button"
+                    onClick={() => changeTrendRange(r.k)}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="trend-legend">
+                {PRICE_SOURCES.map((s) => {
+                  const has = ((trend.data && trend.data.sources && trend.data.sources[s.key]) || []).length
+                  return (
+                    <span className="trend-leg" key={s.key} style={{ opacity: has ? 1 : 0.4 }}>
+                      <i className="trend-dot" style={{ background: s.color }} />
+                      {s.label}
+                    </span>
+                  )
+                })}
+              </div>
+
+              <div className="trend-chart-wrap">
+                {trend.loading ? (
+                  <div className="trend-empty">加载中…</div>
+                ) : trend.err ? (
+                  <div className="trend-empty">{trend.err}</div>
+                ) : trend.data &&
+                  (trend.data.sources.official?.length ||
+                    trend.data.sources.jd?.length ||
+                    trend.data.sources.taobao?.length) ? (
+                  <PriceTrendChart series={trend.data} />
+                ) : (
+                  <div className="trend-empty">暂无价格数据</div>
+                )}
+              </div>
+
+              {!trend.loading && trend.data && (
+                <div className="trend-summary">
+                  <span className="ts-cur">
+                    {PRICE_SOURCES.filter((s) => trendCurrent(trend.data, s.key) != null).map((s, idx, arr) => (
+                      <span key={s.key} className="ts-item">
+                        <i className="trend-dot" style={{ background: s.color }} />
+                        {s.label} {yuan(trendCurrent(trend.data, s.key))}
+                        {idx < arr.length - 1 ? ' · ' : ''}
+                      </span>
+                    ))}
+                  </span>
+                  {trendChangePct(trend.data) != null && (
+                    <span className={'ts-chg ' + (trendChangePct(trend.data) >= 0 ? 'up' : 'down')}>
+                      近{RANGE_LABEL[trend.range]} {trendChangePct(trend.data) >= 0 ? '↑' : '↓'}
+                      {Math.abs(trendChangePct(trend.data)).toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {trend.range === '1d' && (
+                <div className="trend-note">
+                  提示：1 天窗口数据较稀疏（同一天多次采集仅保留最新一条）。京东 / 淘宝为参考价，可在后台录入或对接比价 API 同步。
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -394,7 +534,7 @@ export default function MyConfigs({ onLogout }) {
           <div className="cfg-end">还没有保存的配置，点右上角「新建」建一套</div>
         ) : (
           list.map((c) => {
-            const filled = CONFIG_SLOTS.filter((s) => (c.planJson || {})[s.key] && (c.planJson || {})[s.key].model)
+            const filled = planPreview(c.planJson)
             return (
               <div
                 className="cfg-card"
@@ -422,15 +562,12 @@ export default function MyConfigs({ onLogout }) {
                     <span className="chip-soft empty">暂无配件</span>
                   ) : (
                     <>
-                      {filled.slice(0, PREVIEW_SLOTS).map((s) => {
-                        const m = (c.planJson || {})[s.key]
-                        return (
-                          <span className="chip-soft" key={s.key}>
-                            <SlotIcon slot={s.key} size={13} />
-                            {s.cn}·{shortModel(m.model)}
-                          </span>
-                        )
-                      })}
+                      {filled.slice(0, PREVIEW_SLOTS).map((r, ri) => (
+                        <span className="chip-soft" key={(r.slot || r.cn) + '-' + ri}>
+                          <SlotIcon slot={r.slot || 'cpu'} size={13} />
+                          {r.cn}·{shortModel(r.model)}
+                        </span>
+                      ))}
                       {filled.length > PREVIEW_SLOTS && (
                         <span className="chip-soft more">+{filled.length - PREVIEW_SLOTS} 项</span>
                       )}
@@ -466,7 +603,12 @@ export default function MyConfigs({ onLogout }) {
           })
         )}
 
-        {!loading && list.length > 0 && (
+        {!loading && list.length > 0 && list.length < cfgTotal && (
+          <button className="sr-more" type="button" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? '加载中…' : '加载更多'}
+          </button>
+        )}
+        {!loading && list.length > 0 && list.length >= cfgTotal && (
           <div className="cfg-end">已经到底啦 · 共 {list.length} 套配置</div>
         )}
       </div>

@@ -24,8 +24,10 @@ jobs:
       - name: Build web bundle (inject API base)
         run: npm run build
         env:
-          # 在仓库 Settings → Secrets and variables → Variables 中设置 VITE_API_BASE，
-          # 指向真机 / 真机可达的后端，例如 https://api.yourdomain.com/api/app
+          # 局域网真机测试：在仓库 Settings → Secrets and variables → Variables 中
+          # 设置 VITE_API_BASE 为「http://你的电脑内网IP:3000/api/app」
+          # （手机与电脑需连同一 WiFi，且后端需绑定 0.0.0.0 而非 127.0.0.1）。
+          # 上线时改为公网域名，例如 https://api.yourdomain.com/api/app
           VITE_API_BASE: ${{ vars.VITE_API_BASE || 'https://REPLACE-ME.example.com/api/app' }}
 
       - name: Sync Capacitor Android

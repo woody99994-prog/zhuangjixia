@@ -7,13 +7,16 @@ import {
   IconPencil,
   IconHistory,
   IconBell,
+  IconCoin,
   IconShield,
+  IconTruck,
   IconInfo,
   IconChevron,
   IconEdit,
   IconLogout,
+  IconSliders,
 } from '../components/Icons.jsx'
-import { profileStats, profileGroups, HERO_BGS } from '../data.js'
+import { profileGroups, HERO_BGS } from '../data.js'
 import { api } from '../apiClient.js'
 import { authStatusLabel } from '../format.js'
 
@@ -22,8 +25,12 @@ const MENU_ICONS = {
   pencil: IconPencil,
   history: IconHistory,
   bell: IconBell,
+  coin: IconCoin,
   shield: IconShield,
   info: IconInfo,
+  truck: IconTruck,
+  // 「应用设置」用滑块图标（设置语义），代替原先直接暴露的账号与安全
+  settings: IconSliders,
 }
 
 // 头像插画（简化版 3D 角色：橙色短发 + 紫色连帽衫）
@@ -53,6 +60,7 @@ export default function Profile({ onLogout, theme = 'light', onToggleTheme, onOp
   const [me, setMe] = useState(null)
   const [loading, setLoading] = useState(true)
   const [counts, setCounts] = useState({ unread: 0, favorites: 0, posts: 0, history: 0 })
+  const [userStats, setUserStats] = useState({ followingCount: 0, followerCount: 0, likeCount: 0 })
 
   const loadMe = useCallback(() => {
     let alive = true
@@ -62,6 +70,17 @@ export default function Profile({ onLogout, theme = 'light', onToggleTheme, onOp
         if (!alive) return
         setMe(d)
         if (d && d.profile && typeof d.profile.heroBg === 'number') setHeroBg(d.profile.heroBg)
+        // 自己的 关注/粉丝/获赞 走真实接口（与「查看他人主页」同一端点）
+        if (d && d.id) {
+          api
+            .get('users/' + d.id)
+            .then((s) => alive && setUserStats({
+              followingCount: s.followingCount || 0,
+              followerCount: s.followerCount || 0,
+              likeCount: s.likeCount || 0
+            }))
+            .catch(() => {})
+        }
       })
       .catch(() => {})
       .finally(() => alive && setLoading(false))
@@ -181,14 +200,17 @@ export default function Profile({ onLogout, theme = 'light', onToggleTheme, onOp
       </div>
 
       <div className="pf-stats">
-        {profileStats.map((s) => (
+        {[
+          { value: String(userStats.followingCount), label: '关注' },
+          { value: String(userStats.followerCount), label: '粉丝' },
+          { value: String(userStats.likeCount), label: '获赞' },
+        ].map((s) => (
           <div className="pf-stat" key={s.label}>
             <b>{s.value}</b>
             <span>{s.label}</span>
           </div>
         ))}
       </div>
-      <p className="pf-stats-note">关注 / 粉丝 / 获赞为演示数据，筹备中</p>
 
       <div className="pf-groups">
         {profileGroups.map((group, gi) => (

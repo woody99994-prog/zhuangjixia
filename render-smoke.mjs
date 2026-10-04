@@ -41,12 +41,45 @@ const PROPS = {
   doc: { title: '用户协议', contentMd: '# 标题\n\n## 章节\n正文', updatedAt: new Date().toISOString() },
   loading: false,
   item: { id: '1', title: '演示', contentMd: '正文', coverUrl: '' },
+  // ProductDetail 走 product（整机方案），specs 需给真实结构否则渲染抛错
+  product: {
+    id: '1',
+    title: '演示整机',
+    coverUrl: '',
+    totalPriceCents: 599900,
+    specs: [
+      { k: 'CPU', v: 'Intel i5-13400F', p: '¥1099' },
+      { k: '显卡', v: 'RTX 4060', p: '¥2299' }
+    ]
+  },
 }
 
 const SCREENS = [
   'Home', 'Square', 'AIBuild', 'MyConfigs', 'Profile',
   'Messages', 'Favorites', 'MyPosts', 'BrowseHistory', 'AccountSecurity',
   'EditProfile', 'AboutSheet', 'LegalDoc', 'Login', 'Search',
+  // 积分体系
+  'MyPoints', 'RedeemMall', 'RedeemDetail', 'RedeemCheckout', 'MyRedeemOrders', 'MyAddresses',
+  // 应用设置（收纳收货地址 / 账号与安全）
+  'Settings',
+  // 内容详情（帖子详情内含内嵌抽奖模块）
+  'ArticleDetail', 'ProductDetail', 'UserProfile',
+]
+
+// 组件单独渲染：像 PostLottery 这类内嵌模块不在 screens 列表里，但同样会白屏
+const COMPONENTS = [
+  ['PostLottery', { postId: '1' }],
+  // 配置详情：分别验证槽位格式与清单格式（parts[]）两种 planJson 都能渲染
+  ['ConfigDetailView', { detail: { id: '1', title: '槽位格式配置', totalPriceCents: 899900, planJson: { cpu: { model: 'i5-13400F', price: 1099 }, gpu: { model: 'RTX 4060', price: 2299 } } } }],
+  ['ConfigDetailView', {
+    detail: {
+      id: '2',
+      title: '清单格式配置',
+      remark: '种子数据',
+      totalPriceCents: 1799900,
+      planJson: { parts: [{ name: 'Intel Core Ultra 7 265K', category: 'CPU', priceCents: 279900 }, { name: '华硕 ROG STRIX Z890-E', category: '主板', priceCents: 369900 }] }
+    }
+  }],
 ]
 
 const server = await createServer({
@@ -66,6 +99,24 @@ for (const name of SCREENS) {
       continue
     }
     const html = renderToString(React.createElement(C, PROPS))
+    out.push('OK ' + name + ' 渲染成功 (' + html.length + ' 字节)')
+    pass++
+  } catch (e) {
+    out.push('XX ' + name + ' 渲染抛错 -> ' + (e && e.message ? e.message.split('\n')[0] : String(e)))
+    fail++
+  }
+}
+
+for (const [name, extra] of COMPONENTS) {
+  try {
+    const mod = await server.ssrLoadModule('/src/components/' + name + '.jsx')
+    const C = mod.default
+    if (typeof C !== 'function') {
+      out.push('x ' + name + ' 默认导出不是组件')
+      fail++
+      continue
+    }
+    const html = renderToString(React.createElement(C, { ...PROPS, ...extra }))
     out.push('OK ' + name + ' 渲染成功 (' + html.length + ' 字节)')
     pass++
   } catch (e) {

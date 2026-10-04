@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { IconChevron, IconTrash, IconPlus } from '../components/Icons.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import { api } from '../apiClient.js'
 import { relTime } from '../format.js'
 
@@ -14,37 +15,70 @@ const STATUS_LABEL = {
 export default function MyPosts({ onBack, onOpenArticle, onCompose }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [flash, setFlash] = useState('')
+  const [pending, setPending] = useState(null)
+  const [removing, setRemoving] = useState(false)
 
-  const load = useCallback(() => {
+  const load = useCallback((pg = 1, append = false) => {
     let alive = true
-    setLoading(true)
+    if (pg === 1) setLoading(true)
+    else setLoadingMore(true)
     api
-      .get('my/posts?pageSize=50')
-      .then((d) => alive && setItems((d && d.items) || []))
-      .catch(() => alive && setItems([]))
-      .finally(() => alive && setLoading(false))
+      .get('my/posts?page=' + pg + '&pageSize=20')
+      .then((d) => {
+        if (!alive) return
+        const list = (d && d.items) || []
+        const t = d && typeof d.total === 'number' ? d.total : list.length
+        setItems(append ? (prev) => [...prev, ...list] : list)
+        setTotal(t)
+        setPage(pg)
+      })
+      .catch(() => {
+        if (!alive) return
+        if (!append) setItems([])
+      })
+      .finally(() => {
+        if (!alive) return
+        if (pg === 1) setLoading(false)
+        else setLoadingMore(false)
+      })
     return () => {
       alive = false
     }
   }, [])
+
+  const loadMore = () => {
+    if (loadingMore) return
+    load(page + 1, true)
+  }
 
   useEffect(() => {
     const cancel = load()
     return cancel
   }, [load])
 
+  // 删除前先弹确认：帖子删掉不可恢复，避免误触
+  const askRemove = (p) => setPending(p)
+
   const remove = async (p) => {
+    setRemoving(true)
     const backup = items
-    setItems((prev) => prev.filter((x) => x.id !== p.id))
+    // 确认后先关弹层，再从列表里移除，避免删失败回滚时闪一下
     try {
       await api.del('my/posts/' + p.id)
+      setItems((prev) => prev.filter((x) => x.id !== p.id))
       setFlash('已删除')
       setTimeout(() => setFlash(''), 2200)
     } catch (e) {
       setItems(backup)
       setFlash((e && e.message) || '删除失败')
       setTimeout(() => setFlash(''), 2200)
+    } finally {
+      setRemoving(false)
+      setPending(null)
     }
   }
 
@@ -61,7 +95,7 @@ export default function MyPosts({ onBack, onOpenArticle, onCompose }) {
             <span>发帖</span>
           </button>
         ) : (
-          <span className="sp-count">{items.length} 条</span>
+          <span className="sp-count">{total || items.length} 条</span>
         )}
       </div>
 
@@ -73,7 +107,8 @@ export default function MyPosts({ onBack, onOpenArticle, onCompose }) {
         ) : items.length === 0 ? (
           <div className="sp-empty">还没有发布过内容</div>
         ) : (
-          items.map((p) => (
+          <>
+            {items.map((p) => (
             <div className="myp-item" key={p.id}>
               <div
                 className="myp-main"
@@ -96,14 +131,33 @@ export default function MyPosts({ onBack, onOpenArticle, onCompose }) {
                 className="myp-del"
                 type="button"
                 aria-label="删除该内容"
-                onClick={() => remove(p)}
+                onClick={() => askRemove(p)}
               >
                 <IconTrash size={16} color="var(--muted)" strokeWidth={1.9} />
               </button>
             </div>
-          ))
+            ))}
+            {items.length < total && (
+              <button className="sr-more" type="button" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? '加载中…' : '加载更多'}
+              </button>
+            )}
+          </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!pending}
+        title="删除这篇帖子？"
+        desc={
+          (pending ? `《${pending.title || '未命名'}》` : '') +
+          '删除后不可恢复，帖子下的评论、点赞会一并清除。若帖子插入过抽奖，抽奖会保留并解绑，可再插到其他帖子。'
+        }
+        confirmText="删除"
+        busy={removing}
+        onCancel={() => setPending(null)}
+        onConfirm={() => remove(pending)}
+      />
     </div>
   )
 }

@@ -9,20 +9,43 @@ const TYPE_LABEL = { plan: '整机方案', post: '帖子', article: '文章' }
 export default function BrowseHistory({ onBack, onOpenArticle }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [flash, setFlash] = useState('')
 
-  const load = useCallback(() => {
+  const load = useCallback((pg = 1, append = false) => {
     let alive = true
-    setLoading(true)
+    if (pg === 1) setLoading(true)
+    else setLoadingMore(true)
     api
-      .get('my/history?pageSize=50')
-      .then((d) => alive && setItems((d && d.items) || []))
-      .catch(() => alive && setItems([]))
-      .finally(() => alive && setLoading(false))
+      .get('my/history?page=' + pg + '&pageSize=20')
+      .then((d) => {
+        if (!alive) return
+        const list = (d && d.items) || []
+        const t = d && typeof d.total === 'number' ? d.total : list.length
+        setItems(append ? (prev) => [...prev, ...list] : list)
+        setTotal(t)
+        setPage(pg)
+      })
+      .catch(() => {
+        if (!alive) return
+        if (!append) setItems([])
+      })
+      .finally(() => {
+        if (!alive) return
+        if (pg === 1) setLoading(false)
+        else setLoadingMore(false)
+      })
     return () => {
       alive = false
     }
   }, [])
+
+  const loadMore = () => {
+    if (loadingMore) return
+    load(page + 1, true)
+  }
 
   useEffect(() => {
     const cancel = load()
@@ -73,7 +96,8 @@ export default function BrowseHistory({ onBack, onOpenArticle }) {
         ) : items.length === 0 ? (
           <div className="sp-empty">还没有浏览记录</div>
         ) : (
-          items.map((h) => (
+          <>
+            {items.map((h) => (
             <div className="fav-item" key={h.id}>
               <div
                 className="fav-main"
@@ -113,7 +137,13 @@ export default function BrowseHistory({ onBack, onOpenArticle }) {
                 <IconTrash size={16} color="var(--muted)" strokeWidth={1.9} />
               </button>
             </div>
-          ))
+            ))}
+            {items.length < total && (
+              <button className="sr-more" type="button" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? '加载中…' : '加载更多'}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

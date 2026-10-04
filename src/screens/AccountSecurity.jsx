@@ -24,33 +24,38 @@ export default function AccountSecurity({ onBack }) {
       </div>
 
       <div className="sp-body">
-        <button className="pf-row" type="button" onClick={() => setView('password')}>
-          <span className="pf-row-ic tone-purple">
-            <IconLock size={20} />
-          </span>
-          <span className="pf-row-label">登录密码修改</span>
-          <span className="pf-row-chev">
-            <IconChevron size={17} strokeWidth={2} />
-          </span>
-        </button>
-        <button className="pf-row" type="button" onClick={() => setView('phone')}>
-          <span className="pf-row-ic tone-blue">
-            <IconPhone size={20} />
-          </span>
-          <span className="pf-row-label">手机号码修改</span>
-          <span className="pf-row-chev">
-            <IconChevron size={17} strokeWidth={2} />
-          </span>
-        </button>
-        <button className="pf-row" type="button" onClick={() => setView('realname')}>
-          <span className="pf-row-ic tone-green">
-            <IconIdCard size={20} />
-          </span>
-          <span className="pf-row-label">实名认证</span>
-          <span className="pf-row-chev">
-            <IconChevron size={17} strokeWidth={2} />
-          </span>
-        </button>
+        {/* 与「我的」页一级菜单同一套卡片样式 */}
+        <div className="pf-groups">
+          <div className="pf-group">
+            <button className="pf-row" type="button" onClick={() => setView('password')}>
+              <span className="pf-row-ic tone-purple">
+                <IconLock size={20} />
+              </span>
+              <span className="pf-row-label">登录密码修改</span>
+              <span className="pf-row-chev">
+                <IconChevron size={17} strokeWidth={2} />
+              </span>
+            </button>
+            <button className="pf-row" type="button" onClick={() => setView('phone')}>
+              <span className="pf-row-ic tone-blue">
+                <IconPhone size={20} />
+              </span>
+              <span className="pf-row-label">手机号码修改</span>
+              <span className="pf-row-chev">
+                <IconChevron size={17} strokeWidth={2} />
+              </span>
+            </button>
+            <button className="pf-row" type="button" onClick={() => setView('realname')}>
+              <span className="pf-row-ic tone-green">
+                <IconIdCard size={20} />
+              </span>
+              <span className="pf-row-label">实名认证</span>
+              <span className="pf-row-chev">
+                <IconChevron size={17} strokeWidth={2} />
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

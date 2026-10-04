@@ -5,7 +5,7 @@
 import { Capacitor } from '@capacitor/core'
 
 // 是否运行在 Capacitor 原生壳（安卓 APK）内
-const IS_NATIVE = Capacitor.isNativePlatform()
+export const IS_NATIVE = Capacitor.isNativePlatform()
 // API 基地址：CI 构建时由 VITE_API_BASE 注入（真机可达的后端）；
 // 本地开发与同源 Web 回退到 /api/app（由 Vite proxy 转发到后端 3000）
 const API_BASE = import.meta.env.VITE_API_BASE || '/api/app'

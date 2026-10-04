@@ -17,6 +17,8 @@ import { yuan } from '../format.js'
 
 const QUICK_ICONS = { chip: IconChip, book: IconBook, swap: IconSwap, bolt: IconBolt }
 const FALLBACK_BANNER = 'linear-gradient(135deg, #0D245C 0%, #1476AD 55%, #2199FF 100%)'
+// Banner 模型无 subtitle 字段，副标题用投放类型兜底，避免空白
+const BANNER_SUB = { plan: '整机方案精选', post: '装机心得', article: '装机指南', url: '活动进行中' }
 
 // 搜索筛选维度：全部 / 用户 / 帖子 / 文章 / 配置
 const FILTERS = [
@@ -28,10 +30,19 @@ const FILTERS = [
 ]
 
 // 02 首页
-export default function Home({ onOpenEntry, onOpenSearch }) {
+export default function Home({ onOpenEntry, onOpenSearch, onOpenProduct, isFav, toggleFav }) {
   const [banners, setBanners] = useState([])
   const [plans, setPlans] = useState([])
   const [loading, setLoading] = useState(true)
+  const [planPage, setPlanPage] = useState(1)
+  const [planTotal, setPlanTotal] = useState(0)
+  const [planLoadingMore, setPlanLoadingMore] = useState(false)
+  // 轻提示（收藏成功 / 需登录等反馈，避免「点了没反应」）
+  const [flash, setFlash] = useState('')
+  const toast = useCallback((msg) => {
+    setFlash(msg)
+    setTimeout(() => setFlash(''), 2400)
+  }, [])
 
   // 全局搜索：关键词 + 当前筛选维度 + 筛选弹层开关
   const [kw, setKw] = useState('')
@@ -56,29 +67,50 @@ export default function Home({ onOpenEntry, onOpenSearch }) {
   const activeRef = useRef(0)
   const timerRef = useRef(null)
 
-  useEffect(() => {
+  const loadPlans = useCallback((pg = 1, append = false) => {
     let alive = true
-    ;(async () => {
-      try {
-        const [b, p] = await Promise.all([
-          api.get('banners', { auth: false }),
-          api.get('plans?pageSize=20', { auth: false }),
-        ])
+    if (pg === 1) setLoading(true)
+    else setPlanLoadingMore(true)
+    api
+      .get('plans?page=' + pg + '&pageSize=20', { auth: false })
+      .then((d) => {
         if (!alive) return
-        setBanners(Array.isArray(b) ? b : [])
-        setPlans(p && p.items ? p.items : [])
-      } catch (e) {
+        const list = d && d.items ? d.items : []
+        const t = d && typeof d.total === 'number' ? d.total : list.length
+        setPlans(append ? (prev) => [...prev, ...list] : list)
+        setPlanTotal(t)
+        setPlanPage(pg)
+      })
+      .catch(() => {
         if (!alive) return
-        setBanners([])
-        setPlans([])
-      } finally {
-        if (alive) setLoading(false)
-      }
-    })()
+        if (!append) setPlans([])
+      })
+      .finally(() => {
+        if (!alive) return
+        if (pg === 1) setLoading(false)
+        else setPlanLoadingMore(false)
+      })
     return () => {
       alive = false
     }
   }, [])
+
+  const loadPlanMore = () => {
+    if (planLoadingMore) return
+    loadPlans(planPage + 1, true)
+  }
+
+  useEffect(() => {
+    let alive = true
+    api
+      .get('banners', { auth: false })
+      .then((b) => alive && setBanners(Array.isArray(b) ? b : []))
+      .catch(() => alive && setBanners([]))
+    loadPlans(1, false)
+    return () => {
+      alive = false
+    }
+  }, [loadPlans])
 
   const goTo = useCallback((i) => {
     const el = trackRef.current
@@ -142,7 +174,7 @@ export default function Home({ onOpenEntry, onOpenSearch }) {
                 </div>
                 <span className="banner-chip">精选</span>
                 <h3 className="banner-title">{b.title}</h3>
-                <p className="banner-sub">{b.subtitle || ''}</p>
+                <p className="banner-sub">{b.subtitle || BANNER_SUB[b.targetType] || ''}</p>
                 <div className="banner-dots">
                   {banners.map((_, di) => (
                     <i
@@ -249,7 +281,12 @@ export default function Home({ onOpenEntry, onOpenSearch }) {
 
       <div className="sec-head">
         <h2>为你推荐</h2>
-        <span className="sec-more">
+        <span
+          className="sec-more"
+          role="button"
+          tabIndex={0}
+          onClick={() => onOpenEntry && onOpenEntry('chip')}
+        >
           更多
           <IconChevron size={13} color="#8A8F99" strokeWidth={2} />
         </span>
@@ -259,38 +296,84 @@ export default function Home({ onOpenEntry, onOpenSearch }) {
         {plans.length === 0 ? (
           <div className="rec-empty">{loading ? '加载中…' : '暂无推荐方案'}</div>
         ) : (
-          plans.map((p) => (
-            <div className="rec-card" key={p.id}>
-              <span
-                className="rec-thumb"
-                style={
-                  p.coverUrl
-                    ? {
-                        backgroundImage: `url(${p.coverUrl})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                      }
-                    : { background: FALLBACK_BANNER }
-                }
-              >
-                <IconChip size={40} color="rgba(255,255,255,0.95)" strokeWidth={1.5} />
-              </span>
-              <div className="rec-info">
-                <div className="rec-title">{p.title}</div>
-                <div className="rec-tags">
-                  {(p.tagsJson || []).map((t) => (
-                    <span className="tag" key={t}>
-                      {t}
-                    </span>
-                  ))}
+          <>
+            {plans.map((p) => {
+              const fav = isFav ? isFav('plan', p.id) : false
+              return (
+                <div
+                  className="rec-card"
+                  key={p.id}
+                  onClick={() => onOpenProduct && onOpenProduct(p)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span
+                    className="rec-thumb"
+                    style={
+                      p.coverUrl
+                        ? {
+                            backgroundImage: `url(${p.coverUrl})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                          }
+                        : { background: FALLBACK_BANNER }
+                    }
+                  >
+                    <IconChip size={40} color="rgba(255,255,255,0.95)" strokeWidth={1.5} />
+                  </span>
+                  <div className="rec-info">
+                    <div className="rec-title">{p.title}</div>
+                    <div className="rec-tags">
+                      {(p.tagsJson || []).map((t) => (
+                        <span className="tag" key={t}>
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="rec-price">{yuan(p.priceCents)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className={'rec-fav' + (fav ? ' on' : '')}
+                    aria-label={fav ? '取消收藏' : '收藏'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (!toggleFav) return
+                      toggleFav('plan', p.id, {
+                        title: p.title,
+                        coverUrl: p.coverUrl || null,
+                        priceCents: p.priceCents || 0,
+                      })
+                        .then((nowFav) => toast(nowFav ? '已收藏' : '已取消收藏'))
+                        .catch((err) => {
+                          const msg =
+                            err && err.code === 'UNAUTHORIZED'
+                              ? err.message || '请先登录后再收藏'
+                              : (err && err.message) || '操作失败，请重试'
+                          toast(msg)
+                        })
+                    }}
+                  >
+                    <IconHeart
+                      size={20}
+                      color={fav ? '#FF4D4F' : '#ADB5BF'}
+                      fill={fav ? '#FF4D4F' : 'none'}
+                      strokeWidth={1.9}
+                    />
+                  </button>
                 </div>
-                <div className="rec-price">{yuan(p.priceCents)}</div>
-              </div>
-              <IconHeart size={20} color="#ADB5BF" strokeWidth={1.9} />
-            </div>
-          ))
+              )
+            })}
+            {plans.length < planTotal && (
+              <button className="sr-more" type="button" onClick={loadPlanMore} disabled={planLoadingMore}>
+                {planLoadingMore ? '加载中…' : '加载更多'}
+              </button>
+            )}
+          </>
         )}
       </div>
+
+      {flash && <div className="rec-flash">{flash}</div>}
     </div>
   )
 }

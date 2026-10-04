@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { IconChevron, IconHeart, IconStar, IconSend, IconCheck, SlotIcon } from '../components/Icons.jsx'
 import { api, getUser } from '../apiClient.js'
+import PostLottery from '../components/PostLottery.jsx'
 import { rowsToPlan, planTotalYuan, isConfigTable, slotKeyFromCell, priceFromCell } from '../configTable.js'
 import { relTime } from '../format.js'
 
@@ -71,7 +72,7 @@ function Avatar({ url, name, className }) {
 }
 
 // 文章 / 帖子详情页：返回 / 标题 / 作者 / 正文（封面图在顶部 + 配置表半遮掩）/ 评论区 / 底部评论框
-export default function ArticleDetail({ article, onBack }) {
+export default function ArticleDetail({ article, onBack, onOpenUser }) {
   const [data, setData] = useState(article || {})
   const [liked, setLiked] = useState(false)
   const [collected, setCollected] = useState(false)
@@ -180,9 +181,19 @@ export default function ArticleDetail({ article, onBack }) {
   }, [id])
 
   const blocks = parseMd(data.contentMd)
-  const likeCount = (data.likeCount || (data.extra && data.extra.likeCount) || 0) + (liked ? 1 : 0)
+  const likeCount = data.likeCount || (data.extra && data.extra.likeCount) || 0
   const viewCount = data.viewCount || 0
   const showComments = kind === 'post'
+
+  // 作者信息：列表进入时 article 自带 author；直接打开详情时由 GET posts/:id 返回 author
+  const authorId =
+    data.authorId != null
+      ? String(data.authorId)
+      : data.author && data.author.id != null
+        ? String(data.author.id)
+        : ''
+  const authorName = (data.author && data.author.nickname) || data.authorName || '装机匣'
+  const authorAvatar = (data.author && data.author.avatarUrl) || ''
 
   const toggleCollect = async () => {
     if (!id) return
@@ -299,6 +310,32 @@ export default function ArticleDetail({ article, onBack }) {
     }
   }
 
+  // 帖子 / 文章主赞：真实接入后端（POST /my/{type}s/:id/like 幂等切换）
+  const togglePostLike = async () => {
+    if (!id) return
+    const next = !liked
+    const snapshot = liked
+    setLiked(next)
+    try {
+      const r = await api.post('my/' + targetType + 's/' + id + '/like')
+      setLiked(!!r.liked)
+      if (typeof r.likeCount === 'number') setData((prev) => ({ ...prev, likeCount: r.likeCount }))
+    } catch (e) {
+      setLiked(snapshot)
+      toast((e && e.message) || '操作失败，请重试')
+    }
+  }
+  // 进入详情即回查当前用户是否已点赞，避免刷新后本地态丢失
+  useEffect(() => {
+    if (!id) return
+    let alive = true
+    api.get('my/' + targetType + 's/' + id + '/like')
+      .then((d) => alive && setLiked(!!(d && d.liked)))
+      .catch(() => {})
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
   // 发表评论 / 回复：统一走同一个输入框，回复时带上 parentId
   const sendComment = async () => {
     const text = draft.trim()
@@ -347,10 +384,26 @@ export default function ArticleDetail({ article, onBack }) {
 
       <div className="ad-head">
         <h1 className="ad-title">{data.title}</h1>
-        <div className="ad-author">
-          <span className="ad-av" />
+        {/* 作者行：有作者 id 就整行可点（进 TA 的主页），没有就是普通展示 */}
+        <div
+          className={'ad-author' + (authorId ? ' is-clickable' : '')}
+          role={authorId ? 'button' : undefined}
+          tabIndex={authorId ? 0 : undefined}
+          onClick={() => authorId && onOpenUser && onOpenUser(authorId)}
+          onKeyDown={(e) => {
+            if (authorId && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault()
+              onOpenUser && onOpenUser(authorId)
+            }
+          }}
+        >
+          {authorAvatar ? (
+            <img className="ad-av" src={authorAvatar} alt="" />
+          ) : (
+            <span className="ad-av as-fallback">{authorName.trim().charAt(0)}</span>
+          )}
           <div className="ad-author-meta">
-            <div className="ad-author-name">{data.authorName || '装机匣'}</div>
+            <div className="ad-author-name">{authorName}</div>
             <div className="ad-author-sub">
               {viewCount > 0 ? `${viewCount} 阅读` : ''}
               {viewCount > 0 && formatDate(data.publishedAt || data.updatedAt) ? ' · ' : ''}
@@ -358,6 +411,11 @@ export default function ArticleDetail({ article, onBack }) {
               {showComments && cmTotal > 0 ? ` · ${cmTotal} 评论` : ''}
             </div>
           </div>
+          {authorId ? (
+            <span className="ad-author-chev" aria-hidden="true">
+              <IconChevron size={16} strokeWidth={2} />
+            </span>
+          ) : null}
         </div>
         {tags.length > 0 && (
           <div className="ad-tags">
@@ -475,6 +533,9 @@ export default function ArticleDetail({ article, onBack }) {
         </div>
       )}
 
+      {/* 帖子详情内嵌的积分抽奖模块（与配置表同层级的内容模块；仅帖子有） */}
+      {showComments && id ? <PostLottery postId={String(id)} /> : null}
+
       {/* 评论区：只读真实数据，作者可删自己的评论 */}
       {showComments && (
         <div className="ad-cms">
@@ -509,7 +570,19 @@ export default function ArticleDetail({ article, onBack }) {
               const mine = !!myId && String(c.userId) === myId
               return (
                 <div className="ad-cm" key={c.id}>
-                  <Avatar url={c.avatarUrl} name={c.nickname} className="ad-cm-av" />
+                  {/* 评论者头像同样可点：直接进 TA 的主页 */}
+                  {c.userId && onOpenUser ? (
+                    <button
+                      type="button"
+                      className="ad-cm-av-btn"
+                      aria-label={'查看 ' + c.nickname + ' 的主页'}
+                      onClick={() => onOpenUser(c.userId)}
+                    >
+                      <Avatar url={c.avatarUrl} name={c.nickname} className="ad-cm-av" />
+                    </button>
+                  ) : (
+                    <Avatar url={c.avatarUrl} name={c.nickname} className="ad-cm-av" />
+                  )}
                   <div className="ad-cm-main">
                     <div className="ad-cm-top">
                       <b>{c.nickname}</b>
@@ -693,7 +766,7 @@ export default function ArticleDetail({ article, onBack }) {
         <button
           type="button"
           className={'ad-act' + (liked ? ' is-on' : '')}
-          onClick={() => setLiked((v) => !v)}
+          onClick={togglePostLike}
         >
           <IconHeart
             size={20}

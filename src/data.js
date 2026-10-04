@@ -182,9 +182,11 @@ export const profileGroups = [
     { label: '我的收藏', icon: 'star', tone: 'orange', key: 'favorites' },
     { label: '我的发布', icon: 'pencil', tone: 'indigo', key: 'posts' },
     { label: '浏览足迹', icon: 'history', tone: 'green', key: 'history' },
+    { label: '我的积分', icon: 'coin', tone: 'amber', key: 'points' },
   ],
   [
-    { label: '账号与安全', icon: 'shield', tone: 'purple', key: 'security' },
+    // 收货地址、账号与安全都收进「应用设置」，这里只留一个入口
+    { label: '应用设置', icon: 'settings', tone: 'purple', key: 'settings' },
     { label: '关于我们', icon: 'info', tone: 'gray', key: 'about' },
   ],
 ]
@@ -248,13 +250,20 @@ export const PROVINCES = [
 ]
 export const APP_BUILD = '2026.09.21'
 
-// 「我的」页个人卡可循环切换的背景（与后端 UserProfile.heroBg 的索引一一对应）
+// 「我的」页 / 他人主页 个人卡背景（与后端 UserProfile.heroBg 的索引一一对应）
+// 0..4 为纯色渐变，5..9 为风景照片；background 简写对两者都适用，故可混用同一数组
 export const HERO_BGS = [
   'linear-gradient(160deg, #0A0D2A 0%, #171B57 46%, #2C1C66 100%)',
   'linear-gradient(160deg, #04202E 0%, #0A4C63 52%, #0E7490 100%)',
   'linear-gradient(160deg, #2A0A2E 0%, #57123F 52%, #8B1D5B 100%)',
   'linear-gradient(160deg, #1C1206 0%, #4A2C0B 52%, #8A5A12 100%)',
   'linear-gradient(160deg, #0C1A0A 0%, #1D4A14 52%, #2E7D32 100%)',
+  // 照片层之上叠一层压暗渐变（background 多层时写在前面即位于顶层），保证白字可读
+  "linear-gradient(180deg, rgba(6,12,30,0.28) 0%, rgba(6,12,30,0.62) 100%), url('https://picsum.photos/id/1018/1200/600') center/cover no-repeat",
+  "linear-gradient(180deg, rgba(6,12,30,0.28) 0%, rgba(6,12,30,0.62) 100%), url('https://picsum.photos/id/1015/1200/600') center/cover no-repeat",
+  "linear-gradient(180deg, rgba(6,12,30,0.28) 0%, rgba(6,12,30,0.62) 100%), url('https://picsum.photos/id/1039/1200/600') center/cover no-repeat",
+  "linear-gradient(180deg, rgba(6,12,30,0.28) 0%, rgba(6,12,30,0.62) 100%), url('https://picsum.photos/id/1043/1200/600') center/cover no-repeat",
+  "linear-gradient(180deg, rgba(6,12,30,0.28) 0%, rgba(6,12,30,0.62) 100%), url('https://picsum.photos/id/1016/1200/600') center/cover no-repeat",
 ]
 
 /* ============================================================

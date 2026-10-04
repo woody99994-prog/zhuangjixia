@@ -66,3 +66,58 @@ export function planTotalYuan(planJson) {
     return sum + (Number.isFinite(p) ? p : 0)
   }, 0)
 }
+
+// —— 两种历史格式 ——
+// 库里同时存在两种 planJson：
+//   ① 槽位格式（前端新建/编辑写入）：{ cpu: { model, price }, ... }，price 单位「元」
+//   ② 清单格式（种子数据/早期导入）：{ parts: [{ name, category, priceCents }] }，category 为中文
+// 只认槽位格式的话，清单格式的配置会全部显示成「未选择」，所以统一归一化后再渲染。
+const CATEGORY_SLOT = {
+  CPU: 'cpu',
+  处理器: 'cpu',
+  主板: 'mainboard',
+  显卡: 'gpu',
+  内存: 'ram',
+  硬盘: 'storage',
+  固态硬盘: 'storage',
+  电源: 'psu',
+  散热: 'cooler',
+  散热器: 'cooler',
+  机箱: 'case',
+  显示器: 'monitor',
+  外设: 'peripheral',
+  配件: 'accessory',
+}
+
+export function slotFromCategory(text) {
+  const t = String(text || '').trim()
+  return CATEGORY_SLOT[t] || null
+}
+
+// 归一化：返回 [{ slot, cn, model, price(元) }]（只含填了型号的行）+ 合计（元）
+export function normalizePlan(planJson) {
+  const plan = planJson || {}
+  const rows = []
+
+  if (Array.isArray(plan.parts)) {
+    plan.parts.forEach((p) => {
+      const model = String((p && (p.model || p.name)) || '').trim()
+      if (!model) return
+      const slot = slotFromCategory(p && p.category) || ''
+      const cents = Number(p && (p.priceCents != null ? p.priceCents : p.price))
+      // 清单格式存的是分；万一存的是元（小于 100 的极端值除外），这里按「分」处理
+      const price = Number.isFinite(cents) ? Math.round(cents / 100) : 0
+      const def = CONFIG_SLOTS.find((s) => s.key === slot)
+      rows.push({ slot, cn: def ? def.cn : String((p && p.category) || '配件'), model, price })
+    })
+  } else {
+    CONFIG_SLOTS.forEach((s) => {
+      const model = String(((plan[s.key] || {}).model) || '').trim()
+      if (!model) return
+      const price = Number((plan[s.key] || {}).price)
+      rows.push({ slot: s.key, cn: s.cn, model, price: Number.isFinite(price) ? price : 0 })
+    })
+  }
+
+  return { rows, totalYuan: rows.reduce((sum, r) => sum + (Number(r.price) || 0), 0) }
+}

@@ -9,19 +9,42 @@ const TYPE_LABEL = { plan: '整机方案', post: '帖子', article: '文章', co
 export default function Favorites({ onBack, onOpenArticle }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
 
-  const load = useCallback(() => {
+  const load = useCallback((pg = 1, append = false) => {
     let alive = true
-    setLoading(true)
+    if (pg === 1) setLoading(true)
+    else setLoadingMore(true)
     api
-      .get('my/favorites?pageSize=50')
-      .then((d) => alive && setItems((d && d.items) || []))
-      .catch(() => alive && setItems([]))
-      .finally(() => alive && setLoading(false))
+      .get('my/favorites?page=' + pg + '&pageSize=20')
+      .then((d) => {
+        if (!alive) return
+        const list = (d && d.items) || []
+        const t = d && typeof d.total === 'number' ? d.total : list.length
+        setItems(append ? (prev) => [...prev, ...list] : list)
+        setTotal(t)
+        setPage(pg)
+      })
+      .catch(() => {
+        if (!alive) return
+        if (!append) setItems([])
+      })
+      .finally(() => {
+        if (!alive) return
+        if (pg === 1) setLoading(false)
+        else setLoadingMore(false)
+      })
     return () => {
       alive = false
     }
   }, [])
+
+  const loadMore = () => {
+    if (loadingMore) return
+    load(page + 1, true)
+  }
 
   useEffect(() => {
     const cancel = load()
@@ -57,7 +80,7 @@ export default function Favorites({ onBack, onOpenArticle }) {
           <IconChevron size={22} color="var(--ink)" strokeWidth={2.2} />
         </button>
         <span className="sp-title">我的收藏</span>
-        <span className="sp-count">{items.length} 条</span>
+        <span className="sp-count">{total || items.length} 条</span>
       </div>
 
       <div className="sp-body">
@@ -66,7 +89,8 @@ export default function Favorites({ onBack, onOpenArticle }) {
         ) : items.length === 0 ? (
           <div className="sp-empty">还没有收藏，去内容页点「收藏」试试</div>
         ) : (
-          items.map((f) => (
+          <>
+            {items.map((f) => (
             <div className="fav-item" key={f.id}>
               <div
                 className="fav-main"
@@ -98,7 +122,13 @@ export default function Favorites({ onBack, onOpenArticle }) {
                 <IconTrash size={16} color="var(--muted)" strokeWidth={1.9} />
               </button>
             </div>
-          ))
+            ))}
+            {items.length < total && (
+              <button className="sr-more" type="button" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? '加载中…' : '加载更多'}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

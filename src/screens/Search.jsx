@@ -100,9 +100,12 @@ export default function Search({ initialKeyword = '', initialType = 'all', onBac
   const renderHit = (h, i) => {
     const meta = KIND_META[h.kind] || { label: h.kind, Icon: IconSearch, tone: 'qi-blue' }
     const Ico = meta.Icon
-    const clickable = h.kind === 'article' || h.kind === 'post'
+    const clickable = h.kind === 'article' || h.kind === 'post' || h.kind === 'config'
+    const openTarget = h.kind === 'config' ? onOpenProduct : onOpenArticle
     const onClick =
-      clickable && onOpenArticle ? () => onOpenArticle({ kind: h.kind, id: String(h.id), ...h }) : undefined
+      clickable && openTarget
+        ? () => openTarget({ kind: h.kind, id: String(h.id), ...h })
+        : undefined
     return (
       <div
         className={'sr-item' + (clickable ? ' is-click' : '')}
