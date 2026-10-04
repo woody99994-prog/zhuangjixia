@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅 debug 构建生效的清单叠加（Android build-type manifest overlay）。
+  目的：允许明文 HTTP，便于真机连接局域网内的后端（http://192.168.x.x:3000）。
+
+  背景：targetSdk >= 28 时 Android 默认禁止明文流量，且 Capacitor 的
+  server.cleartext 只对 Cordova 项目写清单，纯 Capacitor 项目不会自动加上
+  android:usesCleartextTraffic，故在此显式声明。
+
+  release 构建不会读取本文件，对外分发时依旧是「禁止明文」的安全策略。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true" />
+</manifest>

@@ -7,13 +7,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # 固定 ubuntu-24.04：ubuntu-latest 将于 2026-10-19 迁移到 Ubuntu 26，避免构建环境漂移。
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -24,32 +25,41 @@ jobs:
       - name: Build web bundle (inject API base)
         run: npm run build
         env:
-          # 局域网真机测试：在仓库 Settings → Secrets and variables → Variables 中
-          # 设置 VITE_API_BASE 为「http://你的电脑内网IP:3000/api/app」
-          # （手机与电脑需连同一 WiFi，且后端需绑定 0.0.0.0 而非 127.0.0.1）。
-          # 上线时改为公网域名，例如 https://api.yourdomain.com/api/app
-          VITE_API_BASE: ${{ vars.VITE_API_BASE || 'https://REPLACE-ME.example.com/api/app' }}
+          # 真实机联调用的「绝对」后端地址（原生壳内不走同源代理）。
+          # 在仓库 Settings → Secrets and variables → Actions → Variables 里新建
+          # VITE_API_BASE 即可覆盖下面的默认值（改地址无需改代码，推荐）。
+          # 默认值 = 开发机内网 IP：手机需与电脑连同一 WiFi，且后端须绑 0.0.0.0。
+          # 上线时改成公网域名，例如 https://api.yourdomain.com/api/app
+          VITE_API_BASE: ${{ vars.VITE_API_BASE || 'http://192.168.8.10:3000/api/app' }}
 
       - name: Sync Capacitor Android
         run: npx cap sync android
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
-      - name: Ensure Android platform present
-        run: yes | ${{ env.ANDROID_HOME }}/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+      - name: Verify Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          sdkmanager --list_installed | head -30
 
       - name: Build debug APK
-        run: cd android && chmod +x ./gradlew && ./gradlew assembleDebug
+        run: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
