@@ -35,28 +35,49 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
+      # JDK 21 是硬要求：Capacitor 8 生成的 android/app/capacitor.build.gradle 里
+      # 写死 sourceCompatibility/targetCompatibility = JavaVersion.VERSION_21。
+      # 用 JDK 17 会在编译期直接报 "invalid source release: 21"。
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
-      - name: Verify Android SDK
+      - name: Verify toolchain
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          sdkmanager --list_installed | head -30
+          java -version 2>&1 | head -2
+          sdkmanager --list_installed | head -20
 
       - name: Build debug APK
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          set +e
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee gradle-build.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            echo "===== gradle failed with exit $code ====="
+            # 把日志尾部转成 GitHub 注解，便于在无权限下载日志时也能定位问题
+            tail -n 40 gradle-build.log | sed -e 's/%/%25/g' -e 's/\r//g' \
+              | while IFS= read -r line; do echo "::error::$line"; done
+          fi
+          exit "$code"
+
+      - name: Upload gradle log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gradle-build-log
+          path: android/gradle-build.log
+          if-no-files-found: ignore
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v6
